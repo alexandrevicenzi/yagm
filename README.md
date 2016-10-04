@@ -1,4 +1,4 @@
-# yagm [![Build Status](https://travis-ci.org/alexandrevicenzi/yagm.svg?branch=master)](https://travis-ci.org/alexandrevicenzi/yagm) [![GoDoc](https://godoc.org/github.com/alexandrevicenzi/yagm?status.svg)](http://godoc.org/github.com/alexandrevicenzi/yagm)
+# yagm [![Build Status](https://travis-ci.org/alexandrevicenzi/yagm.svg?branch=master)](https://travis-ci.org/alexandrevicenzi/yagm) [![GoDoc](https://godoc.org/github.com/alexandrevicenzi/yagm?status.svg)](http://godoc.org/github.com/alexandrevicenzi/yagm) [![Go Report Card](https://goreportcard.com/badge/github.com/alexandrevicenzi/yagm)](https://goreportcard.com/report/github.com/alexandrevicenzi/yagm)
 
 yagm is an acronym of Yet Another Go Mux.
 
