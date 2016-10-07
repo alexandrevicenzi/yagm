@@ -9,15 +9,15 @@ import (
 )
 
 type yagmRoute struct {
-    pattern string
-    handler http.Handler
-    re      *regexp.Regexp
+	pattern string
+	handler http.Handler
+	re      *regexp.Regexp
 }
 
 type yagmRequest struct {
-    route  *yagmRoute
-    params map[string]string
-    paramsProcessed bool
+	route           *yagmRoute
+	params          map[string]string
+	paramsProcessed bool
 }
 
 // YagmMux is an HTTP request multiplexer.
@@ -31,25 +31,25 @@ type YagmMux struct {
 }
 
 var (
-    // Hold request info until request is finished.
-    requests = make(map[*http.Request]*yagmRequest)
+	// Hold request info until request is finished.
+	requests = make(map[*http.Request]*yagmRequest)
 )
 
 // Does path match pattern?
-func (route * yagmRoute) match(path string) bool {
-    return route.re.MatchString(path)
+func (route *yagmRoute) match(path string) bool {
+	return route.re.MatchString(path)
 }
 
 // Extrac all named groups.
-func (route * yagmRoute) extractParams(r *http.Request) map[string]string {
-    result := make(map[string]string, 0)
-    match  := route.re.FindStringSubmatch(r.URL.Path)
+func (route *yagmRoute) extractParams(r *http.Request) map[string]string {
+	result := make(map[string]string, 0)
+	match := route.re.FindStringSubmatch(r.URL.Path)
 
-    for i, name := range route.re.SubexpNames() {
-        result[name] = match[i]
-    }
+	for i, name := range route.re.SubexpNames() {
+		result[name] = match[i]
+	}
 
-    return result
+	return result
 }
 
 // New allocates and returns a new YagmMux.
@@ -64,39 +64,39 @@ func New() *YagmMux {
 // If a handler already exists for pattern, Handle panics.
 // If a pattern isn't a valid regular expression, Handle panics.
 func (mux *YagmMux) Handle(pattern string, handler http.Handler) {
-    mux.mu.Lock()
-    defer mux.mu.Unlock()
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
 
-    if pattern == "" {
-        panic("yagm: empty pattern")
-    }
+	if pattern == "" {
+		panic("yagm: empty pattern")
+	}
 
-    if handler == nil {
-        panic("yagm: nil handler")
-    }
+	if handler == nil {
+		panic("yagm: nil handler")
+	}
 
-    if _, ok := mux.routes[pattern]; ok {
-        panic("yagm: route already registered")
-    } else {
-        re := regexp.MustCompile(pattern)
+	if _, ok := mux.routes[pattern]; ok {
+		panic("yagm: route already registered")
+	} else {
+		re := regexp.MustCompile(pattern)
 
-        mux.routes[pattern] = &yagmRoute{
-            pattern,
-            handler,
-            re,
-        }
-    }
+		mux.routes[pattern] = &yagmRoute{
+			pattern,
+			handler,
+			re,
+		}
+	}
 }
 
 // HandleFunc registers the handler function for the given pattern.
 func (mux *YagmMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-    mux.Handle(pattern, http.HandlerFunc(handler))
+	mux.Handle(pattern, http.HandlerFunc(handler))
 }
 
 // ServeHTTP dispatches the request to the handler whose
 // pattern matches the request URL.
 func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    var handler http.Handler
+	var handler http.Handler
 
     hash := sha1.New()
     hash.Write([]byte(r.URL.Path))
@@ -123,47 +123,46 @@ func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             }
         }
     }
-        
 
-    // Delete request info after processing request.
-    defer func() {
-        delete(requests, r)
-    }()
+	// Delete request info after processing request.
+	defer func() {
+		delete(requests, r)
+	}()
 
-    if handler == nil {
-        handler = http.NotFoundHandler()
-    }
+	if handler == nil {
+		handler = http.NotFoundHandler()
+	}
 
-    handler.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 }
 
 // Param return the value of a route variable.
 func Param(r *http.Request, name string) (string, bool) {
-    var value string
+	var value string
 
-    params, ok := Params(r)
+	params, ok := Params(r)
 
-    if ok {
-        value, ok = params[name]
-    }
+	if ok {
+		value, ok = params[name]
+	}
 
-    return value, ok
+	return value, ok
 }
 
 // Params returns the route variables for the current request, if any.
 func Params(r *http.Request) (map[string]string, bool) {
-    req, ok := requests[r]
+	req, ok := requests[r]
 
-    if !ok {
-        return nil, false
-    }
+	if !ok {
+		return nil, false
+	}
 
-    // Only process params if requested.
-    // This save some request time if not used.
-    if !req.paramsProcessed {
-        req.params = req.route.extractParams(r)
-        req.paramsProcessed = true
-    }
+	// Only process params if requested.
+	// This save some request time if not used.
+	if !req.paramsProcessed {
+		req.params = req.route.extractParams(r)
+		req.paramsProcessed = true
+	}
 
-    return req.params, ok
+	return req.params, ok
 }
