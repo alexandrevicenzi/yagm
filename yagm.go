@@ -6,7 +6,6 @@ import (
     "sync"
     "hash"
     "crypto/sha1"
-    "fmt"
 )
 
 type yagmRoute struct {
