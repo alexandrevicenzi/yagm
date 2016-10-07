@@ -4,6 +4,9 @@ import (
     "net/http"
     "regexp"
     "sync"
+    "hash"
+    "crypto/sha1"
+    "fmt"
 )
 
 type yagmRoute struct {
@@ -25,6 +28,7 @@ type yagmRequest struct {
 type YagmMux struct {
     mu     sync.RWMutex
     routes map[string]*yagmRoute
+    cache  map[hash.Hash]string
 }
 
 var (
@@ -53,6 +57,7 @@ func (route * yagmRoute) extractParams(r *http.Request) map[string]string {
 func New() *YagmMux {
     return &YagmMux{
         routes: make(map[string]*yagmRoute),
+        cache:  make(map[hash.Hash]string),
     }
 }
 
@@ -94,17 +99,32 @@ func (mux *YagmMux) HandleFunc(pattern string, handler func(http.ResponseWriter,
 func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     var handler http.Handler
 
-    for _, route := range mux.routes {
-        if route.match(r.URL.Path) {
-            handler = route.handler
+    hash := sha1.New()
+    hash.Write([]byte(r.URL.Path))
 
-            requests[r] = &yagmRequest{
-                route: route,
+    if routeString, ok := mux.cache[hash]; ok {
+        var route = mux.routes[routeString]
+        handler = route.handler
+
+        requests[r] = &yagmRequest {
+            route: route,
+        }
+    } else {
+        for _, route := range mux.routes {
+            if route.match(r.URL.Path) {
+                handler = route.handler
+
+                requests[r] = &yagmRequest{
+                    route: route,
+                }
+
+                mux.cache[hash] = r.URL.Path
+
+                break
             }
-
-            break
         }
     }
+        
 
     // Delete request info after processing request.
     defer func() {
