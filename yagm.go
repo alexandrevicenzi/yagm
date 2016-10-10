@@ -3,8 +3,6 @@ package yagm
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
-	//"hash"
 	"net/http"
 	"regexp"
 	"sync"
