@@ -1,11 +1,13 @@
 package yagm
 
 import (
-    "net/http"
-    "regexp"
-    "sync"
-    "hash"
-    "crypto/sha1"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+	//"hash"
+	"net/http"
+	"regexp"
+	"sync"
 )
 
 type yagmRoute struct {
@@ -25,9 +27,9 @@ type yagmRequest struct {
 // against a list of registered patterns and calls
 // the handler for the pattern that matches the URL.
 type YagmMux struct {
-    mu     sync.RWMutex
-    routes map[string]*yagmRoute
-    cache  map[hash.Hash]string
+	mu     sync.RWMutex
+	routes map[string]*yagmRoute
+	cache  map[string]*yagmRoute
 }
 
 var (
@@ -54,10 +56,10 @@ func (route *yagmRoute) extractParams(r *http.Request) map[string]string {
 
 // New allocates and returns a new YagmMux.
 func New() *YagmMux {
-    return &YagmMux{
-        routes: make(map[string]*yagmRoute),
-        cache:  make(map[hash.Hash]string),
-    }
+	return &YagmMux{
+		routes: make(map[string]*yagmRoute),
+		cache:  make(map[string]*yagmRoute),
+	}
 }
 
 // Handle registers the handler for the given pattern.
@@ -98,31 +100,31 @@ func (mux *YagmMux) HandleFunc(pattern string, handler func(http.ResponseWriter,
 func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var handler http.Handler
 
-    hash := sha1.New()
-    hash.Write([]byte(r.URL.Path))
+	hash := sha1.New()
+	sha1Bytes := hash.Sum([]byte(r.URL.Path))
+	sha1Str := hex.EncodeToString(sha1Bytes[:])
 
-    if routeString, ok := mux.cache[hash]; ok {
-        var route = mux.routes[routeString]
-        handler = route.handler
+	if route, ok := mux.cache[sha1Str]; ok {
+		handler = route.handler
 
-        requests[r] = &yagmRequest {
-            route: route,
-        }
-    } else {
-        for _, route := range mux.routes {
-            if route.match(r.URL.Path) {
-                handler = route.handler
+		requests[r] = &yagmRequest{
+			route: route,
+		}
+	} else {
+		for _, route := range mux.routes {
+			if route.match(r.URL.Path) {
+				handler = route.handler
 
-                requests[r] = &yagmRequest{
-                    route: route,
-                }
+				requests[r] = &yagmRequest{
+					route: route,
+				}
 
-                mux.cache[hash] = r.URL.Path
+				mux.cache[sha1Str] = route
 
-                break
-            }
-        }
-    }
+				break
+			}
+		}
+	}
 
 	// Delete request info after processing request.
 	defer func() {
