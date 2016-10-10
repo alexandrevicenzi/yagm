@@ -1,6 +1,8 @@
 package yagm
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"net/http"
 	"regexp"
 	"sync"
@@ -25,6 +27,7 @@ type yagmRequest struct {
 type YagmMux struct {
 	mu     sync.RWMutex
 	routes map[string]*yagmRoute
+	cache  map[string]*yagmRoute
 }
 
 var (
@@ -53,6 +56,7 @@ func (route *yagmRoute) extractParams(r *http.Request) map[string]string {
 func New() *YagmMux {
 	return &YagmMux{
 		routes: make(map[string]*yagmRoute),
+		cache:  make(map[string]*yagmRoute),
 	}
 }
 
@@ -94,15 +98,29 @@ func (mux *YagmMux) HandleFunc(pattern string, handler func(http.ResponseWriter,
 func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var handler http.Handler
 
-	for _, route := range mux.routes {
-		if route.match(r.URL.Path) {
-			handler = route.handler
+	hash := sha1.New()
+	sha1Bytes := hash.Sum([]byte(r.URL.Path))
+	sha1Str := hex.EncodeToString(sha1Bytes[:])
 
-			requests[r] = &yagmRequest{
-				route: route,
+	if route, ok := mux.cache[sha1Str]; ok {
+		handler = route.handler
+
+		requests[r] = &yagmRequest{
+			route: route,
+		}
+	} else {
+		for _, route := range mux.routes {
+			if route.match(r.URL.Path) {
+				handler = route.handler
+
+				requests[r] = &yagmRequest{
+					route: route,
+				}
+
+				mux.cache[sha1Str] = route
+
+				break
 			}
-
-			break
 		}
 	}
 
