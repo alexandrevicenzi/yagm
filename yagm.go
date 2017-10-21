@@ -3,13 +3,18 @@ package yagm
 import (
 	"net/http"
 	"regexp"
+	"sort"
 	"sync"
+	"sync/atomic"
 )
 
+var RouteOptimizeRequestCount uint64 = 1000
+
 type yagmRoute struct {
-	pattern string
-	handler http.Handler
-	re      *regexp.Regexp
+	pattern  string
+	handler  http.Handler
+	re       *regexp.Regexp
+	hitCount uint64 // incremented every time the route is used
 }
 
 type yagmRequest struct {
@@ -23,8 +28,9 @@ type yagmRequest struct {
 // against a list of registered patterns and calls
 // the handler for the pattern that matches the URL.
 type YagmMux struct {
-	mu     sync.RWMutex
-	routes map[string]*yagmRoute
+	mu           sync.RWMutex
+	routes       []*yagmRoute
+	requestCount uint64
 }
 
 var (
@@ -52,16 +58,35 @@ func (route *yagmRoute) extractParams(r *http.Request) map[string]string {
 // New allocates and returns a new YagmMux.
 func New() *YagmMux {
 	return &YagmMux{
-		routes: make(map[string]*yagmRoute),
+		routes: make([]*yagmRoute, 0),
 	}
+}
+
+// findRoute iterates the routes to find the pattern
+func (mux *YagmMux) findRoute(pattern string) (*yagmRoute, bool) {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+	for _, r := range mux.routes {
+		if r.pattern == pattern {
+			return r, true
+		}
+	}
+	return nil, false
+}
+
+// optimizeRoutes sorts the routes descending based on the route.hitCount, thus making the most used be first in the array
+func (mux *YagmMux) optimizeRoutes() {
+	mux.mu.Lock()
+	defer mux.mu.Unlock()
+	sort.Slice(mux.routes, func(i, j int) bool {
+		return mux.routes[i].hitCount > mux.routes[j].hitCount
+	})
 }
 
 // Handle registers the handler for the given pattern.
 // If a handler already exists for pattern, Handle panics.
 // If a pattern isn't a valid regular expression, Handle panics.
 func (mux *YagmMux) Handle(pattern string, handler http.Handler) {
-	mux.mu.Lock()
-	defer mux.mu.Unlock()
 
 	if pattern == "" {
 		panic("yagm: empty pattern")
@@ -71,16 +96,20 @@ func (mux *YagmMux) Handle(pattern string, handler http.Handler) {
 		panic("yagm: nil handler")
 	}
 
-	if _, ok := mux.routes[pattern]; ok {
+	if _, ok := mux.findRoute(pattern); ok {
 		panic("yagm: route already registered")
 	} else {
 		re := regexp.MustCompile(pattern)
 
-		mux.routes[pattern] = &yagmRoute{
+		route := &yagmRoute{
 			pattern,
 			handler,
 			re,
+			0,
 		}
+		mux.mu.Lock() // write lock for minimum time.
+		mux.routes = append(mux.routes, route)
+		mux.mu.Unlock()
 	}
 }
 
@@ -92,10 +121,12 @@ func (mux *YagmMux) HandleFunc(pattern string, handler func(http.ResponseWriter,
 // ServeHTTP dispatches the request to the handler whose
 // pattern matches the request URL.
 func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	rc := atomic.AddUint64(&mux.requestCount, 1)
 	var handler http.Handler
 
 	for _, route := range mux.routes {
 		if route.match(r.URL.Path) {
+			atomic.AddUint64(&route.hitCount, 1)
 			handler = route.handler
 
 			requests[r] = &yagmRequest{
@@ -116,6 +147,11 @@ func (mux *YagmMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handler.ServeHTTP(w, r)
+
+	if rc > RouteOptimizeRequestCount {
+		mux.optimizeRoutes()
+		atomic.StoreUint64(&mux.requestCount, 0)
+	}
 }
 
 // Param return the value of a route variable.
